@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm:dev:client\" \"npm:dev:server\"",
-    "dev:client": "vite",
+    "dev:client": "vite --host 0.0.0.0",
     "dev:server": "nodemon --watch server --ext js,mjs,cjs,json server/index.js",
     "server": "node server/index.js",
     "build": "vite build",

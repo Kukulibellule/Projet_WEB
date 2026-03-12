@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import './App.css'
 
+const PSEUDO_STORAGE_KEY = 'chat:pseudo'
+
 function App() {
-  const [pseudoInput, setPseudoInput] = useState('')
+  const [pseudoInput, setPseudoInput] = useState(() => localStorage.getItem(PSEUDO_STORAGE_KEY) ?? '')
   const [pseudo, setPseudo] = useState('')
   const [messageInput, setMessageInput] = useState('')
   const [messages, setMessages] = useState([])
@@ -12,7 +14,7 @@ function App() {
   const messagesRef = useRef(null)
 
   const socket = useMemo(() => {
-    const serverUrl = import.meta.env.VITE_CHAT_SERVER_URL ?? 'http://localhost:3001'
+    const serverUrl = import.meta.env.VITE_CHAT_SERVER_URL ?? window.location.origin
     return io(serverUrl, { autoConnect: false })
   }, [])
 
@@ -22,6 +24,11 @@ function App() {
     socket.on('connect', () => {
       setConnected(true)
       setError('')
+
+      const savedPseudo = localStorage.getItem(PSEUDO_STORAGE_KEY)?.trim()
+      if (savedPseudo) {
+        socket.emit('user_join', { pseudo: savedPseudo })
+      }
     })
 
     socket.on('disconnect', () => {
@@ -29,9 +36,9 @@ function App() {
       setError('Connexion au serveur perdue.')
     })
 
-    socket.on('connect_error', () => {
+    socket.on('connect_error', (err) => {
       setConnected(false)
-      setError('Serveur de chat indisponible. Demarre le backend (`npm run dev`).')
+      setError(`Serveur de chat indisponible (${err.message}).`) 
     })
 
     socket.on('chat_history', (history) => {
@@ -56,6 +63,8 @@ function App() {
 
     socket.on('join_ok', ({ pseudo: acceptedPseudo }) => {
       setPseudo(acceptedPseudo)
+      setPseudoInput(acceptedPseudo)
+      localStorage.setItem(PSEUDO_STORAGE_KEY, acceptedPseudo)
       setError('')
     })
 
