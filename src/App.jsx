@@ -132,7 +132,7 @@ function App() {
               maxLength={30}
               value={pseudoInput}
               onChange={(event) => setPseudoInput(event.target.value)}
-              placeholder="Ex: PixelNinja"
+              placeholder="Ex: MonMeilleurPseudo"
             />
             <button type="submit">Rejoindre le chat</button>
             {!connected ? <p className="hint">Le serveur de chat n'est pas connecte.</p> : null}
