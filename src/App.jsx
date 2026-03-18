@@ -83,6 +83,23 @@ function App() {
     }
   }
 
+  const handleJoin = (event) => {
+    event.preventDefault()
+    const trimmedPseudo = pseudoInput.trim()
+
+    if (!trimmedPseudo) {
+      setError('Entre un pseudo avant de rejoindre.')
+      return
+    }
+
+    if (!connected) {
+      setError('Pas de connexion serveur. Lance le backend et reessaie.')
+      return
+    }
+
+    socket.emit('user_join_game', { pseudo: trimmedPseudo })
+  }
+
   return (
     <main className="app">
       <header className="app-header">
@@ -133,13 +150,6 @@ function App() {
       )}
 
       {error ? <p className="error">{error}</p> : null}
-       </section>
-      
-      {gameStarted && (
-        <section style={{ marginTop: '20px', width: '100%', maxWidth: '800px' }}>
-          <DrawingArea socket={socket} pseudo={pseudo} userCount={userCount} />
-        </section>
-      )}
     </main>
   )
 }
