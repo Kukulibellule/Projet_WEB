@@ -4,6 +4,7 @@ import cors from 'cors'
 import express from 'express'
 import mongoose from 'mongoose'
 import { Server } from 'socket.io'
+import { WebSocketServer } from 'ws'
 import { Message } from './models/Message.js'
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -58,13 +59,38 @@ const io = new Server(httpServer, {
   },
 })
 
+const wss = new WebSocketServer({ server: httpServer })
+
 const onlineUsers = new Map()
 const inMemoryMessages = []
 let isMongoConnected = false
 
+// Variables for drawing app
+const clients = new Map()
+let strokes = []
+
 function sanitizeText(value, maxLength) {
   if (typeof value !== 'string') return ''
   return value.trim().replace(/\s+/g, ' ').slice(0, maxLength)
+}
+
+// Helpers for drawing app
+function send(ws, data) {
+  if (ws.readyState === 1) ws.send(JSON.stringify(data))
+}
+
+function broadcast(data, excludeWs = null) {
+  for (const [ws] of clients) {
+    if (ws !== excludeWs) send(ws, data)
+  }
+}
+
+function broadcastAll(data) {
+  for (const [ws] of clients) send(ws, data)
+}
+
+function playerList() {
+  return [...clients.values()]
 }
 
 io.on('connection', async (socket) => {
@@ -160,6 +186,77 @@ io.on('connection', async (socket) => {
   })
 })
 
+// WebSocket handler for drawing app
+wss.on('connection', (ws) => {
+  const id = Math.random().toString(36).slice(2, 9)
+
+  ws.on('message', (raw) => {
+    let msg
+    try { msg = JSON.parse(raw) } catch { return }
+
+    // ── join ───────────────────────────────────────────────────────────────
+    if (msg.type === 'join') {
+      const player = { id, name: msg.name, color: msg.color, avatar: msg.avatar }
+      clients.set(ws, player)
+
+      // Send full history + player list only to the newcomer
+      send(ws, {
+        type: 'welcome',
+        id,
+        strokes,
+        players: playerList(),
+      })
+
+      // Tell everyone else a new player joined
+      broadcast({ type: 'joined', player }, ws)
+
+      // Sync updated player list to all
+      broadcastAll({ type: 'players', players: playerList() })
+
+      console.log(`✅  ${player.avatar} ${player.name} [${id}] connecté  (${clients.size} joueurs)`)
+    }
+
+    // ── draw ───────────────────────────────────────────────────────────────
+    else if (msg.type === 'draw') {
+      const player = clients.get(ws)
+      if (!player) return
+
+      const stroke = {
+        type: 'draw',
+        playerId: id,
+        x1: msg.x1, y1: msg.y1,
+        x2: msg.x2, y2: msg.y2,
+        color: msg.color,
+        size: msg.size,
+        tool: msg.tool,
+      }
+
+      strokes.push(stroke)
+      // broadcast to everyone EXCEPT the sender (they already drew locally)
+      broadcast(stroke, ws)
+    }
+
+    // ── reset ──────────────────────────────────────────────────────────────
+    else if (msg.type === 'reset') {
+      strokes = []
+      const player = clients.get(ws)
+      broadcastAll({ type: 'reset', playerId: id, playerName: player?.name ?? '?' })
+    }
+  })
+
+  ws.on('close', () => {
+    const player = clients.get(ws)
+    clients.delete(ws)
+    if (player) {
+      console.log(`❌  ${player.avatar} ${player.name} [${id}] déconnecté  (${clients.size} joueurs)`)
+      broadcastAll({ type: 'left', playerId: id })
+      broadcastAll({ type: 'players', players: playerList() })
+    }
+  })
+
+  ws.on('error', (err) => console.error('WS error:', err.message))
+})
+
 async function connectMongo() {
   try {
     await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 3000 })
@@ -175,6 +272,7 @@ async function connectMongo() {
 async function startServer() {
   httpServer.listen(PORT, HOST, () => {
     console.log(`Chat server listening on http://${HOST}:${PORT}`)
+    console.log(`🎨  Gartic Draw — serveur WebSocket intégré sur ws://${HOST}:${PORT}`)
   })
 
   await connectMongo()

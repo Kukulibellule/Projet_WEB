@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
+import DrawingCanvas from './DrawingCanvas.jsx'
 import './App.css'
 
 const PSEUDO_STORAGE_KEY = 'chat:pseudo'
 
 function App() {
+  const [activeTab, setActiveTab] = useState('chat')
   const [pseudoInput, setPseudoInput] = useState(() => localStorage.getItem(PSEUDO_STORAGE_KEY) ?? '')
   const [pseudo, setPseudo] = useState('')
   const [messageInput, setMessageInput] = useState('')
@@ -116,74 +118,93 @@ function App() {
   }
 
   return (
-    <main className="chat-page">
-      <section className="chat-card">
-        <header className="chat-header">
-          <h1>Chat de la partie</h1>
-          <p>{connected ? 'Connecte au serveur' : 'Connexion en cours...'}</p>
-        </header>
+    <main className="app">
+      <nav className="tabs">
+        <button
+          className={activeTab === 'chat' ? 'active' : ''}
+          onClick={() => setActiveTab('chat')}
+        >
+          💬 Chat
+        </button>
+        <button
+          className={activeTab === 'draw' ? 'active' : ''}
+          onClick={() => setActiveTab('draw')}
+        >
+          🎨 Dessin
+        </button>
+      </nav>
 
-        {!pseudo ? (
-          <form className="join-form" onSubmit={handleJoin}>
-            <label htmlFor="pseudo">Choisis ton pseudo</label>
-            <input
-              id="pseudo"
-              type="text"
-              maxLength={30}
-              value={pseudoInput}
-              onChange={(event) => setPseudoInput(event.target.value)}
-              placeholder="Ex: MonMeilleurPseudo"
-            />
-            <button type="submit">Rejoindre le chat</button>
-            {!connected ? <p className="hint">Le serveur de chat n'est pas connecte.</p> : null}
-          </form>
-        ) : (
-          <>
-            <p className="pseudo-line">
-              Connecte en tant que <strong>{pseudo}</strong>
-            </p>
+      {activeTab === 'chat' ? (
+        <section className="chat-card">
+          <header className="chat-header">
+            <h1>Chat de la partie</h1>
+            <p>{connected ? 'Connecte au serveur' : 'Connexion en cours...'}</p>
+          </header>
 
-            <div className="messages" ref={messagesRef}>
-              {messages.length === 0 ? (
-                <p className="empty">Aucun message pour le moment.</p>
-              ) : (
-                messages.map((message) => (
-                  <article
-                    key={message.id}
-                    className={`message ${message.kind === 'system' ? 'system' : ''}`}
-                  >
-                    {message.kind === 'system' ? (
-                      <p>{message.content}</p>
-                    ) : (
-                      <>
-                        <p>
-                          <strong>{message.pseudo}</strong> {message.content}
-                        </p>
-                        <time dateTime={message.sentAt}>
-                          {new Date(message.sentAt).toLocaleTimeString()}
-                        </time>
-                      </>
-                    )}
-                  </article>
-                ))
-              )}
-            </div>
-
-            <form className="send-form" onSubmit={handleSend}>
+          {!pseudo ? (
+            <form className="join-form" onSubmit={handleJoin}>
+              <label htmlFor="pseudo">Choisis ton pseudo</label>
               <input
+                id="pseudo"
                 type="text"
-                maxLength={400}
-                value={messageInput}
-                onChange={(event) => setMessageInput(event.target.value)}
-                placeholder="Ecris ton message..."
+                maxLength={30}
+                value={pseudoInput}
+                onChange={(event) => setPseudoInput(event.target.value)}
+                placeholder="Ex: MonMeilleurPseudo"
               />
-              <button type="submit">Envoyer</button>
+              <button type="submit">Rejoindre le chat</button>
+              {!connected ? <p className="hint">Le serveur de chat n'est pas connecte.</p> : null}
             </form>
-          </>
-        )}
+          ) : (
+            <>
+              <p className="pseudo-line">
+                Connecte en tant que <strong>{pseudo}</strong>
+              </p>
 
-        {error ? <p className="error">{error}</p> : null}
-      </section>
+              <div className="messages" ref={messagesRef}>
+                {messages.length === 0 ? (
+                  <p className="empty">Aucun message pour le moment.</p>
+                ) : (
+                  messages.map((message) => (
+                    <article
+                      key={message.id}
+                      className={`message ${message.kind === 'system' ? 'system' : ''}`}
+                    >
+                      {message.kind === 'system' ? (
+                        <p>{message.content}</p>
+                      ) : (
+                        <>
+                          <p>
+                            <strong>{message.pseudo}</strong> {message.content}
+                          </p>
+                          <time dateTime={message.sentAt}>
+                            {new Date(message.sentAt).toLocaleTimeString()}
+                          </time>
+                        </>
+                      )}
+                    </article>
+                  ))
+                )}
+              </div>
+
+              <form className="send-form" onSubmit={handleSend}>
+                <input
+                  type="text"
+                  maxLength={400}
+                  value={messageInput}
+                  onChange={(event) => setMessageInput(event.target.value)}
+                  placeholder="Ecris ton message..."
+                />
+                <button type="submit">Envoyer</button>
+              </form>
+            </>
+          )}
+
+          {error ? <p className="error">{error}</p> : null}
+        </section>
+      ) : (
+        <DrawingCanvas />
+      )}
     </main>
   )
 }
