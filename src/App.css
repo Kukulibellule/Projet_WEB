@@ -297,3 +297,317 @@ canvas {
 .players li {
   padding: 0.25rem 0;
 }
+
+/* Gartic Phone Game Styles */
+
+/* Game Lobby */
+.game-lobby {
+  text-align: center;
+  padding: 2rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.game-lobby h2 {
+  margin-bottom: 1rem;
+  font-size: 2rem;
+  color: #fff;
+}
+
+.player-list {
+  list-style: none;
+  padding: 1rem;
+  background: #f5e6d3;
+  border-radius: 8px;
+  margin: 1rem 0;
+  min-height: 100px;
+  color: #333;
+}
+
+.player-list li {
+  padding: 0.5rem;
+  font-size: 1.2rem;
+}
+
+.start-button {
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.3s;
+}
+
+.start-button:hover {
+  background: #45a049;
+}
+
+.start-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Game Phases */
+.game-phase {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.game-phase h2 {
+  font-size: 1.8rem;
+  margin: 0;
+  color: #fff;
+}
+
+.timer {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(220, 53, 69, 0.8);
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  min-width: 150px;
+  text-align: center;
+  border: 2px solid #dc3545;
+}
+
+.current-content {
+  background: #f5e6d3;
+  padding: 1.5rem;
+  border-radius: 8px;
+  max-width: 500px;
+  text-align: center;
+  color: #333;
+}
+
+.current-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin-top: 1rem;
+  border: 1px solid #999;
+}
+
+.current-content p {
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.current-content p strong {
+  font-style: italic;
+  color: #333;
+}
+
+/* Phrase Phase */
+.phrase-phase textarea {
+  width: 100%;
+  max-width: 600px;
+  height: 150px;
+  padding: 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.phrase-phase button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.3s;
+}
+
+.phrase-phase button:hover {
+  background: #0056b3;
+}
+
+.phrase-phase button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Drawing Phase */
+.drawing-phase {
+  width: 100%;
+}
+
+.draw-toolbar {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 1rem;
+  background: #f5e6d3;
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.draw-toolbar .colors,
+.draw-toolbar .sizes {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.draw-toolbar .color {
+  width: 30px;
+  height: 30px;
+  border: 2px solid #ccc;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.draw-toolbar .color:hover {
+  transform: scale(1.1);
+}
+
+.draw-toolbar .color.selected {
+  border-color: #000;
+  box-shadow: 0 0 8px rgba(0,0,0,0.5);
+}
+
+.draw-toolbar .sizes button {
+  width: 35px;
+  height: 35px;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+  border-radius: 4px;
+  color: black;
+  font-weight: bold;
+}
+
+.draw-toolbar .sizes button.selected {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.draw-toolbar button:not(.color):not(.sizes button) {
+  padding: 0.5rem 1rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.3s;
+}
+
+.draw-toolbar button:not(.color):not(.sizes button):hover {
+  background: #c82333;
+}
+
+.submit-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.3s;
+}
+
+.submit-button:hover {
+  background: #218838;
+}
+
+/* Results */
+.game-results {
+  width: 100%;
+  padding: 2rem;
+}
+
+.game-results h2 {
+  text-align: center;
+  font-size: 2rem;
+  margin-bottom: 2rem;
+  color: #fff;
+}
+
+.chains-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.player-chain {
+  background: #f5e6d3;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  color: #333;
+}
+
+.player-chain h3 {
+  margin-top: 0;
+  font-size: 1.5rem;
+  border-bottom: 2px solid #999;
+  padding-bottom: 0.5rem;
+  color: #333;
+}
+
+.chain-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.chain-item {
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  border-left: 4px solid #007bff;
+}
+
+.phrase-item p {
+  margin: 0.5rem 0;
+  color: #333;
+}
+
+.phrase-item p:first-child {
+  font-style: italic;
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.author {
+  font-size: 0.9rem;
+  color: #666;
+  margin-top: 0.5rem !important;
+}
+
+.drawing-item {
+  text-align: center;
+}
+
+.drawing-item p {
+  margin: 0 0 1rem 0;
+  font-weight: bold;
+  color: #333;
+}
+
+.drawing-item img {
+  max-width: 100%;
+  height: auto;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+}
