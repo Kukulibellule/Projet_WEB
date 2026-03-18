@@ -133,6 +133,13 @@ function App() {
       )}
 
       {error ? <p className="error">{error}</p> : null}
+       </section>
+      
+      {gameStarted && (
+        <section style={{ marginTop: '20px', width: '100%', maxWidth: '800px' }}>
+          <DrawingArea socket={socket} pseudo={pseudo} userCount={userCount} />
+        </section>
+      )}
     </main>
   )
 }
