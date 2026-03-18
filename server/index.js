@@ -70,16 +70,29 @@ function sanitizeText(value, maxLength) {
 
 // Broadcast game state to all connected players
 function broadcastGameState() {
-  const gameState = gameInstance.getGameState()
-  for (const socket of gameInstance.players.keys()) {
-    socket.emit('game_state', gameState)
+  try {
+    for (const socket of gameInstance.players.keys()) {
+      const player = gameInstance.players.get(socket)
+      const baseState = gameInstance.getGameState()
+      socket.emit('game_state', {
+        ...baseState,
+        playerId: player?.id,
+        assigned: gameInstance.getAssignmentFor(player?.id),
+      })
+    }
+  } catch (error) {
+    console.error('Error in broadcastGameState:', error)
   }
 }
 
 // Broadcast countdown timer
 function broadcastCountdown() {
-  for (const socket of gameInstance.players.keys()) {
-    socket.emit('game_countdown', { timeLeft: gameInstance.timeLeft })
+  try {
+    for (const socket of gameInstance.players.keys()) {
+      socket.emit('game_countdown', { timeLeft: gameInstance.timeLeft })
+    }
+  } catch (error) {
+    console.error('Error in broadcastCountdown:', error)
   }
 }
 
@@ -87,6 +100,7 @@ function broadcastCountdown() {
 // Socket.IO: Authentication and Game
 // ────────────────────────────────────────────────────────────────────────────
 io.on('connection', async (socket) => {
+  try {
   socket.on('user_join_game', (payload) => {
     const pseudo = sanitizeText(payload?.pseudo, MAX_PSEUDO_LENGTH)
 
@@ -110,6 +124,13 @@ io.on('connection', async (socket) => {
 
   // ── start_game ────────────────────────────────────────────────────────
   socket.on('start_game', () => {
+    // Ensure countdown broadcast updates each second
+    gameInstance.onTick = () => broadcastCountdown()
+    gameInstance.onPhaseChange = () => {
+      broadcastGameState()
+      broadcastCountdown()
+    }
+
     if (gameInstance.startGame()) {
       broadcastGameState()
       broadcastCountdown()
@@ -137,6 +158,21 @@ io.on('connection', async (socket) => {
     }
   })
 
+  // ── send_message ───────────────────────────────────────────────────────
+  socket.on('send_message', (data) => {
+    const pseudo = onlineUsers.get(socket.id)
+    if (pseudo) {
+      const message = {
+        pseudo,
+        content: sanitizeText(data.content, 400),
+        timestamp: new Date()
+      }
+      // Broadcast to all connected users
+      io.emit('new_message', message)
+      console.log(`💬 Message from "${pseudo}": ${message.content}`)
+    }
+  })
+
   socket.on('disconnect', () => {
     const pseudo = onlineUsers.get(socket.id)
     if (pseudo) {
@@ -148,6 +184,9 @@ io.on('connection', async (socket) => {
     console.log(`❌ Player disconnected (${gameInstance.players.size} players left)`)
     broadcastGameState()
   })
+  } catch (error) {
+    console.error('Socket.IO connection error:', error)
+  }
 })
 
 

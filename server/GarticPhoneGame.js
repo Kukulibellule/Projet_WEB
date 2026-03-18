@@ -16,6 +16,10 @@ class GarticPhoneGame {
     this.currentAssignment = {} // playerId -> contentToWorkOn
 
     this.timer = null
+
+    // Callbacks
+    this.onTick = null
+    this.onPhaseChange = null
   }
 
   addPlayer(ws, playerData) {
@@ -60,6 +64,9 @@ class GarticPhoneGame {
 
     this.timer = setInterval(() => {
       this.timeLeft--
+      if (typeof this.onTick === 'function') {
+        this.onTick(this.timeLeft)
+      }
 
       if (this.timeLeft <= 0) {
         clearInterval(this.timer)
@@ -81,6 +88,9 @@ class GarticPhoneGame {
       if (this.currentRound >= this.maxRounds) {
         this.state = 'results'
         clearInterval(this.timer)
+        if (typeof this.onPhaseChange === 'function') {
+          this.onPhaseChange(this.getGameState())
+        }
         return
       }
 
@@ -89,6 +99,9 @@ class GarticPhoneGame {
       this.timeLeft = this.phraseTime
     }
 
+    if (typeof this.onPhaseChange === 'function') {
+      this.onPhaseChange(this.getGameState())
+    }
     this.startTimer()
   }
 
@@ -196,13 +209,20 @@ class GarticPhoneGame {
       round: this.currentRound,
       timeLeft: this.timeLeft,
       players: playerList,
-      content: this.currentContent
+      content: this.currentContent,
+      allChains: this.gameData,
+      assignment: this.currentAssignment
     }
   }
 
-  getResults() {
+  getAllChains() {
     return this.gameData
   }
+
+  getAssignmentFor(playerId) {
+    return this.currentAssignment[playerId] || []
+  }
 }
+
 
 export default GarticPhoneGame

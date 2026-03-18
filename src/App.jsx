@@ -11,6 +11,8 @@ function App() {
   const [error, setError] = useState('')
   const [connected, setConnected] = useState(false)
   const [ws, setWs] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [messageInput, setMessageInput] = useState('')
 
   const socket = useMemo(() => {
     const serverUrl = import.meta.env.VITE_CHAT_SERVER_URL ?? window.location.origin
@@ -48,10 +50,17 @@ function App() {
 
       // Use the same Socket.IO connection for game
       setWs(socket)
+
+      // Join the game immediately
+      socket.emit('join_game', { name: acceptedPseudo })
     })
 
     socket.on('join_error', (message) => {
       setError(message)
+    })
+
+    socket.on('new_message', (message) => {
+      setMessages(prev => [...prev, message])
     })
 
     return () => {
@@ -60,25 +69,18 @@ function App() {
       socket.off('connect_error')
       socket.off('join_ok')
       socket.off('join_error')
+      socket.off('new_message')
       socket.disconnect()
     }
   }, [socket])
 
-  const handleJoin = (event) => {
+  const handleSendMessage = (event) => {
     event.preventDefault()
-    const trimmedPseudo = pseudoInput.trim()
-
-    if (!trimmedPseudo) {
-      setError('Entre un pseudo avant de rejoindre.')
-      return
+    const trimmedMessage = messageInput.trim()
+    if (trimmedMessage && ws) {
+      ws.emit('send_message', { content: trimmedMessage })
+      setMessageInput('')
     }
-
-    if (!connected) {
-      setError('Pas de connexion serveur. Lance le backend et reessaie.')
-      return
-    }
-
-    socket.emit('user_join_game', { pseudo: trimmedPseudo })
   }
 
   return (
@@ -105,7 +107,29 @@ function App() {
           </form>
         </section>
       ) : (
-        <GamePhase pseudo={pseudo} ws={ws} />
+        <div className="game-and-chat">
+          <GamePhase pseudo={pseudo} ws={ws} />
+          <section className="chat-section">
+            <h3>Chat 💬</h3>
+            <div className="messages">
+              {messages.map((msg, index) => (
+                <div key={index} className="message">
+                  <strong>{msg.pseudo}:</strong> {msg.content}
+                </div>
+              ))}
+            </div>
+            <form className="send-form" onSubmit={handleSendMessage}>
+              <input
+                type="text"
+                value={messageInput}
+                onChange={(event) => setMessageInput(event.target.value)}
+                placeholder="Tape ton message..."
+                maxLength={400}
+              />
+              <button type="submit">Envoyer</button>
+            </form>
+          </section>
+        </div>
       )}
 
       {error ? <p className="error">{error}</p> : null}

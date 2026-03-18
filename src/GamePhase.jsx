@@ -9,6 +9,7 @@ function GamePhase({ pseudo, ws }) {
   const [currentRound, setCurrentRound] = useState(0)
   const [timeLeft, setTimeLeft] = useState(0)
   const [content, setContent] = useState('') // current phrase or drawing
+  const [hasSubmitted, setHasSubmitted] = useState(false) // used to lock input after submit
   const [players, setPlayers] = useState([])
   const [currentContent, setCurrentContent] = useState(null) // what to draw or phrase to illustrate
   const [drawing, setDrawing] = useState(null) // canvas data for drawing phase
@@ -27,12 +28,23 @@ function GamePhase({ pseudo, ws }) {
 
     const handleGameState = (msg) => {
       // Server sends `state`, client expects `gameState`
-      setGameState(msg.phase ?? msg.state ?? 'waiting')
+      const resolvedState = msg.phase ?? msg.state ?? 'waiting'
+
+      setGameState(resolvedState)
       setCurrentRound(msg.round || 0)
       setTimeLeft(msg.timeLeft || 0)
       setPlayers(msg.players || [])
       setCurrentContent(msg.content ?? msg.currentContent)
       setAllChains(msg.allChains || {})
+
+      // Use assigned content (server sends it per player)
+      if (msg.assigned && msg.assigned.length > 0) {
+        const next = msg.assigned[0]
+        if (next) {
+          setCurrentContent(next.content)
+          setHasSubmitted(false) // Reset submission status for new content
+        }
+      }
     }
 
     const handleCountdown = (msg) => {
@@ -41,9 +53,6 @@ function GamePhase({ pseudo, ws }) {
 
     ws.on('game_state', handleGameState)
     ws.on('game_countdown', handleCountdown)
-
-    // Send join_game message
-    ws.emit('join_game', { name: pseudo })
 
     return () => {
       ws.off('game_state', handleGameState)
@@ -58,11 +67,11 @@ function GamePhase({ pseudo, ws }) {
   }
 
   const handleSubmitPhrase = () => {
-    if (content.trim() && ws) {
+    if (content.trim() && ws && !hasSubmitted) {
       ws.emit('submit_phrase', {
         content: content.trim()
       })
-      setContent('')
+      setHasSubmitted(true)
     }
   }
 
@@ -107,12 +116,15 @@ function GamePhase({ pseudo, ws }) {
   }
 
   const handleSubmitDrawing = () => {
-    const canvas = canvasRef.current
-    const drawingData = canvas.toDataURL()
-    if (ws) {
-      ws.emit('submit_drawing', {
-        drawing: drawingData
-      })
+    if (!hasSubmitted) {
+      const canvas = canvasRef.current
+      const drawingData = canvas.toDataURL()
+      if (ws) {
+        ws.emit('submit_drawing', {
+          drawing: drawingData
+        })
+      }
+      setHasSubmitted(true)
     }
   }
 
@@ -132,8 +144,8 @@ function GamePhase({ pseudo, ws }) {
             <li key={p.id}>{p.avatar} {p.name}</li>
           ))}
         </ul>
-        <button onClick={handleStartGame} className="start-button">
-          Lancer la partie
+        <button onClick={handleStartGame} className="start-button" disabled={players.length < 2}>
+          {players.length >= 2 ? 'Lancer la partie' : 'En attente de joueurs...'}
         </button>
       </div>
     )
@@ -150,15 +162,21 @@ function GamePhase({ pseudo, ws }) {
             <img src={currentContent} alt="Drawing to inspire" style={{ maxWidth: '200px' }} />
           </div>
         )}
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Écris une phrase..."
-          maxLength={200}
-        />
-        <button onClick={handleSubmitPhrase} disabled={!content.trim()}>
-          Soumettre
-        </button>
+        {hasSubmitted ? (
+          <p className="submitted-message">Votre phrase a été soumise</p>
+        ) : (
+          <>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Écris une phrase..."
+              maxLength={200}
+            />
+            <button onClick={handleSubmitPhrase} disabled={!content.trim()}>
+              Soumettre
+            </button>
+          </>
+        )}
       </div>
     )
   }
@@ -173,43 +191,49 @@ function GamePhase({ pseudo, ws }) {
             <p><strong>"{currentContent}"</strong></p>
           </div>
         )}
-        <div className="draw-toolbar">
-          <div className="colors">
-            {COLORS.map(c => (
-              <button
-                key={c}
-                className={`color ${drawColor === c ? 'selected' : ''}`}
-                style={{ backgroundColor: c }}
-                onClick={() => setDrawColor(c)}
-              />
-            ))}
-          </div>
-          <div className="sizes">
-            {SIZES.map(s => (
-              <button
-                key={s}
-                className={drawSize === s ? 'selected' : ''}
-                onClick={() => setDrawSize(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          <button onClick={handleClearCanvas}>Effacer</button>
-        </div>
-        <canvas
-          ref={canvasRef}
-          width={600}
-          height={400}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          style={{ border: '2px solid #333', backgroundColor: 'white', display: 'block', margin: '1rem 0' }}
-        />
-        <button onClick={handleSubmitDrawing} className="submit-button">
-          Soumettre le dessin
-        </button>
+        {hasSubmitted ? (
+          <p className="submitted-message">Votre dessin a été soumis</p>
+        ) : (
+          <>
+            <div className="draw-toolbar">
+              <div className="colors">
+                {COLORS.map(c => (
+                  <button
+                    key={c}
+                    className={`color ${drawColor === c ? 'selected' : ''}`}
+                    style={{ backgroundColor: c }}
+                    onClick={() => setDrawColor(c)}
+                  />
+                ))}
+              </div>
+              <div className="sizes">
+                {SIZES.map(s => (
+                  <button
+                    key={s}
+                    className={drawSize === s ? 'selected' : ''}
+                    onClick={() => setDrawSize(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <button onClick={handleClearCanvas}>Effacer</button>
+            </div>
+            <canvas
+              ref={canvasRef}
+              width={600}
+              height={400}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              style={{ border: '2px solid #333', backgroundColor: 'white', display: 'block', margin: '1rem 0' }}
+            />
+            <button onClick={handleSubmitDrawing} className="submit-button">
+              Soumettre le dessin
+            </button>
+          </>
+        )}
       </div>
     )
   }
