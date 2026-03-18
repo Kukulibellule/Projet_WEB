@@ -117,13 +117,24 @@ button:hover {
   font-weight: 600;
 }
 
+@media (max-width: 1024px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
 @media (max-width: 640px) {
-  .chat-page {
+  .app {
     padding: 0.8rem;
   }
 
   .messages {
     height: 300px;
+  }
+
+  .toolbar {
+    justify-content: center;
   }
 }
 
@@ -131,70 +142,75 @@ button:hover {
 .app {
   min-height: 100vh;
   padding: 1.5rem;
+  background: #1a1a2e;
+  color: #fff;
 }
 
-.tabs {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 1rem;
-}
-
-.tabs button {
-  background: #f0f0f0;
-  border: 1px solid #ccc;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-  font-size: 1rem;
-  border-radius: 4px 4px 0 0;
-  margin-right: 0.2rem;
-}
-
-.tabs button.active {
-  background: #fff;
-  border-bottom: 1px solid #fff;
-}
-
-.tabs button:hover {
-  background: #e0e0e0;
-}
-
-/* Drawing App */
-.drawing-app {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
-.join-form {
+.app-header {
   text-align: center;
   margin-bottom: 2rem;
 }
 
-.join-form input {
-  display: block;
-  margin: 1rem auto;
-  padding: 0.5rem;
-  font-size: 1rem;
+.app-header h1 {
+  margin: 0;
+  font-size: 2rem;
+  color: #fff;
 }
 
-.avatar-selection {
+.app-header p {
+  margin: 0.5rem 0 0;
+  color: #ccc;
+}
+
+.join-section {
   display: flex;
   justify-content: center;
-  gap: 0.5rem;
-  margin: 1rem 0;
 }
 
-.avatar-selection button {
-  font-size: 2rem;
-  padding: 0.5rem;
-  border: 2px solid transparent;
-  background: none;
-  cursor: pointer;
-  border-radius: 8px;
+.game-layout {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
-.avatar-selection button.selected {
-  border-color: #007bff;
+.chat-section {
+  background: #f5e6d3;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  color: #333;
+}
+
+.drawing-section {
+  background: #f5e6d3;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  color: #333;
+}
+
+.chat-section h2,
+.drawing-section h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.drawing-app {
+  width: 100%;
+}
+
+.drawing-app h2 {
+  margin: 0 0 1rem 0;
+}
+
+canvas {
+  background-color: white;
+  border: 1px solid #ccc;
+  display: block;
+  margin-bottom: 1rem;
 }
 
 .toolbar {
@@ -202,6 +218,7 @@ button:hover {
   gap: 1rem;
   margin-bottom: 1rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .colors {
@@ -233,11 +250,31 @@ button:hover {
   background: #fff;
   cursor: pointer;
   border-radius: 4px;
+  color: black;
+  font-weight: bold;
 }
 
 .sizes button.selected {
   background: #007bff;
   color: white;
+}
+
+.avatars {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.avatars button {
+  font-size: 1.5rem;
+  padding: 0.25rem;
+  border: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.avatars button.selected {
+  border-color: #007bff;
 }
 
 .players {

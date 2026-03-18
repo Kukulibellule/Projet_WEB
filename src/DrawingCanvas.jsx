@@ -4,7 +4,7 @@ const COLORS = ['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF'
 const SIZES = [2, 5, 10, 15, 20]
 const AVATARS = ['😀', '😎', '🤖', '👽', '🐱', '🐶', '🦄', '🍕']
 
-function DrawingCanvas() {
+function DrawingCanvas({ pseudo }) {
   const canvasRef = useRef(null)
   const [ws, setWs] = useState(null)
   const [isDrawing, setIsDrawing] = useState(false)
@@ -14,24 +14,33 @@ function DrawingCanvas() {
   const [color, setColor] = useState('#000000')
   const [size, setSize] = useState(5)
   const [tool, setTool] = useState('pen')
-  const [name, setName] = useState('')
   const [avatar, setAvatar] = useState('😀')
   const [joined, setJoined] = useState(false)
 
   useEffect(() => {
+    if (!pseudo) return
+
     const serverUrl = `ws://localhost:3001`
     const websocket = new WebSocket(serverUrl)
 
     websocket.onopen = () => {
       console.log('Connected to drawing server')
       setWs(websocket)
+      // Auto-join with the shared pseudo
+      websocket.send(JSON.stringify({
+        type: 'join',
+        name: pseudo,
+        color,
+        avatar
+      }))
+      setJoined(true)
     }
 
     websocket.onmessage = (event) => {
       const msg = JSON.parse(event.data)
 
       if (msg.type === 'welcome') {
-        setPlayer({ id: msg.id, name, avatar })
+        setPlayer({ id: msg.id, name: pseudo, avatar })
         // Replay all strokes
         const canvas = canvasRef.current
         const ctx = canvas.getContext('2d')
@@ -62,7 +71,7 @@ function DrawingCanvas() {
     return () => {
       websocket.close()
     }
-  }, [])
+  }, [pseudo])
 
   const drawStroke = (ctx, stroke) => {
     ctx.strokeStyle = stroke.color
@@ -116,17 +125,6 @@ function DrawingCanvas() {
     setIsDrawing(false)
   }
 
-  const handleJoin = () => {
-    if (!ws || !name.trim()) return
-    ws.send(JSON.stringify({
-      type: 'join',
-      name: name.trim(),
-      color,
-      avatar
-    }))
-    setJoined(true)
-  }
-
   const handleReset = () => {
     if (!ws) return
     ws.send(JSON.stringify({ type: 'reset' }))
@@ -134,75 +132,60 @@ function DrawingCanvas() {
 
   return (
     <div className="drawing-app">
-      {!joined ? (
-        <div className="join-form">
-          <h2>Rejoindre le dessin</h2>
-          <input
-            type="text"
-            placeholder="Ton nom"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={20}
-          />
-          <div className="avatar-selection">
-            {AVATARS.map(av => (
-              <button
-                key={av}
-                className={avatar === av ? 'selected' : ''}
-                onClick={() => setAvatar(av)}
-              >
-                {av}
-              </button>
-            ))}
-          </div>
-          <button onClick={handleJoin} disabled={!name.trim()}>Rejoindre</button>
+      <h2>🎨 Dessin </h2>
+      <div className="toolbar">
+        <div className="colors">
+          {COLORS.map(c => (
+            <button
+              key={c}
+              className={`color ${color === c ? 'selected' : ''}`}
+              style={{ backgroundColor: c }}
+              onClick={() => setColor(c)}
+            />
+          ))}
         </div>
-      ) : (
-        <>
-          <div className="toolbar">
-            <div className="colors">
-              {COLORS.map(c => (
-                <button
-                  key={c}
-                  className={`color ${color === c ? 'selected' : ''}`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setColor(c)}
-                />
-              ))}
-            </div>
-            <div className="sizes">
-              {SIZES.map(s => (
-                <button
-                  key={s}
-                  className={size === s ? 'selected' : ''}
-                  onClick={() => setSize(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-            <button onClick={handleReset}>Reset</button>
-          </div>
-          <canvas
-            ref={canvasRef}
-            width={800}
-            height={600}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            style={{ border: '1px solid #ccc', cursor: 'crosshair' }}
-          />
-          <div className="players">
-            <h3>Joueurs ({players.length})</h3>
-            <ul>
-              {players.map(p => (
-                <li key={p.id}>{p.avatar} {p.name}</li>
-              ))}
-            </ul>
-          </div>
-        </>
-      )}
+        <div className="sizes">
+          {SIZES.map(s => (
+            <button
+              key={s}
+              className={size === s ? 'selected' : ''}
+              onClick={() => setSize(s)}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <div className="avatars">
+          {AVATARS.map(av => (
+            <button
+              key={av}
+              className={avatar === av ? 'selected' : ''}
+              onClick={() => setAvatar(av)}
+            >
+              {av}
+            </button>
+          ))}
+        </div>
+        <button onClick={handleReset}>Reset</button>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={600}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        style={{ border: '1px solid #ccc', backgroundColor: 'white' }}
+      />
+      <div className="players">
+        <h3>Joueurs ({players.length})</h3>
+        <ul>
+          {players.map(p => (
+            <li key={p.id}>{p.avatar} {p.name}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   )
 }
