@@ -745,6 +745,11 @@ function GamePhase({ pseudo, ws, drawMode }) {
 
   /* RESULTS */
   if (gameState === 'results') {
+    // Préparer les chaînes pour affichage en tableau : chaque colonne = une chaîne complète
+    const chainsArray = Object.entries(allChains);
+    // Trouver la longueur max d'une chaîne (pour le nombre de lignes)
+    const maxSteps = Math.max(0, ...chainsArray.map(([_, chain]) => chain.length));
+
     return (
       <div style={card}>
         <div style={{textAlign:'center',marginBottom:'2rem'}}>
@@ -752,33 +757,46 @@ function GamePhase({ pseudo, ws, drawMode }) {
           <h2 style={{fontFamily:"'Fredoka One',cursive",fontSize:'2rem',color:'#fff',margin:'0 0 0.3rem'}}>Résultats finaux</h2>
           <p style={{color:'rgba(255,255,255,0.4)'}}>Toutes les chaînes de la partie !</p>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'1.2rem',marginBottom:'2rem'}}>
-          {Object.entries(allChains).map(([playerId, chain]) => {
-            const player = players.find(p=>p.id===playerId)
-            return (
-              <div key={playerId} style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'12px',overflow:'hidden'}}>
-                <div style={{background:'linear-gradient(135deg,rgba(168,85,247,0.3),rgba(59,130,246,0.2))',padding:'0.7rem 1rem',fontWeight:800,fontSize:'0.95rem',borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
-                  {player?.avatar||'😀'} {player?.name||'Joueur'}
-                </div>
-                <div style={{padding:'0.8rem',display:'flex',flexDirection:'column',gap:'0.6rem'}}>
-                  {chain?.length>0?chain.map((item,idx)=>{
-                    const auth=players.find(p=>p.id===item.author)
+        <div style={{overflowX:'auto',marginBottom:'2rem'}}>
+          <table style={{borderCollapse:'separate',borderSpacing:'1rem 0.5rem',width:'100%'}}>
+            <thead>
+              <tr>
+                {chainsArray.map(([playerId, chain], colIdx) => {
+                  const player = players.find(p=>p.id===playerId);
+                  return (
+                    <th key={playerId} style={{textAlign:'center',fontWeight:800,fontSize:'1.05rem',color:'#fff',background:'rgba(168,85,247,0.13)',borderRadius:'10px',padding:'0.7rem'}}>
+                      {player?.avatar||'😀'} {player?.name||'Joueur'}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({length: maxSteps}).map((_, rowIdx) => (
+                <tr key={rowIdx}>
+                  {chainsArray.map(([_, chain], colIdx) => {
+                    const item = chain[rowIdx];
+                    if (!item) {
+                      return <td key={colIdx}></td>;
+                    }
+                    const auth = players.find(p=>p.id===item.author);
                     return (
-                      <div key={idx} style={{background:item.type==='phrase'?'rgba(168,85,247,0.1)':'rgba(255,107,53,0.08)',border:`1px solid ${item.type==='phrase'?'rgba(168,85,247,0.2)':'rgba(255,107,53,0.18)'}`,borderRadius:'8px',padding:'0.6rem'}}>
-                        <div style={{fontSize:'0.68rem',color:'rgba(255,255,255,0.35)',marginBottom:'0.3rem',textTransform:'uppercase'}}>
-                          {item.type==='phrase'?'✍️':'🎨'} {auth?.name||'?'}
+                      <td key={colIdx} style={{verticalAlign:'top',minWidth:'220px',background:item.type==='phrase'?'rgba(168,85,247,0.08)':'rgba(255,107,53,0.06)',borderRadius:'8px',padding:'0.6rem',border:`1px solid ${item.type==='phrase'?'rgba(168,85,247,0.13)':'rgba(255,107,53,0.13)'}`}}>
+                        <div style={{fontSize:'0.68rem',color:'rgba(255,255,255,0.35)',marginBottom:'0.3rem',textTransform:'uppercase',textAlign:'center'}}>
+                          {item.type==='phrase'?'✍️ Phrase':'🎨 Dessin'}<br/>
+                          <span style={{fontWeight:700}}>{auth?.name||'?'}</span>
                         </div>
                         {item.type==='phrase'
-                          ?<div style={{fontStyle:'italic',color:'#e9d5ff',fontSize:'0.9rem'}}>"{item.content}"</div>
-                          :<img src={item.content} alt="" style={{width:'100%',borderRadius:'4px',imageRendering:'pixelated',border:'1px solid rgba(255,255,255,0.08)'}}/>
+                          ? <div style={{fontStyle:'italic',color:'#e9d5ff',fontSize:'0.95rem',textAlign:'center'}}>&quot;{item.content}&quot;</div>
+                          : <img src={item.content} alt="" style={{width:'100%',borderRadius:'4px',imageRendering:'pixelated',border:'1px solid rgba(255,255,255,0.08)'}}/>
                         }
-                      </div>
-                    )
-                  }):<p style={{color:'rgba(255,255,255,0.2)',textAlign:'center',padding:'0.5rem',fontSize:'0.85rem'}}>Aucun contenu</p>}
-                </div>
-              </div>
-            )
-          })}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         <div style={{textAlign:'center'}}>
           <button onClick={handleStartGame} style={{background:'linear-gradient(135deg,#a855f7,#3b82f6)',color:'#fff',padding:'0.9rem 2rem',borderRadius:'12px',fontWeight:800,fontSize:'1.05rem',border:'none',boxShadow:'0 6px 20px rgba(168,85,247,0.35)'}}>
