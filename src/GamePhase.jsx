@@ -580,6 +580,7 @@ function GamePhase({ pseudo, ws, drawMode }) {
   const [showcaseChains, setShowcaseChains] = useState([])
   const [showcaseIndex, setShowcaseIndex] = useState(0)
   const [maxTime, setMaxTime] = useState(MAX_DRAW_TIME)
+  const [authorId, setAuthorId] = useState(null)
   const prevState = useRef(null)
 
   useEffect(() => {
@@ -611,6 +612,7 @@ function GamePhase({ pseudo, ws, drawMode }) {
 
       if (msg.assigned?.length > 0) {
         setCurrentContent(msg.assigned[0]?.content ?? null)
+        setAuthorId(msg.assigned[0]?.author ?? null)
       }
     }
     const handleCountdown = (msg) => setTimeLeft(msg.timeLeft)
@@ -624,10 +626,10 @@ function GamePhase({ pseudo, ws, drawMode }) {
   // Auto-submit when timer expires
   useEffect(() => {
     if (timeLeft === 0 && !hasSubmitted && gameState === 'phrase' && content.trim()) {
-      ws?.emit('submit_phrase', { content: content.trim() })
+      ws?.emit('submit_phrase', { content: content.trim(), basedOnAuthorId: authorId })
       setHasSubmitted(true)
     }
-  }, [timeLeft, hasSubmitted, gameState, content, ws])
+  }, [timeLeft, hasSubmitted, gameState, content, ws, authorId])
 
   const card = {background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'1.5rem',boxShadow:'var(--shadow)',width:'100%'}
 
@@ -708,7 +710,7 @@ function GamePhase({ pseudo, ws, drawMode }) {
               style={{resize:'vertical',minHeight:'80px'}}/>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <span style={{fontSize:'0.8rem',color:'rgba(255,255,255,0.3)'}}>{content.length}/200</span>
-              <button onClick={()=>{if(content.trim()&&ws&&!hasSubmitted){ws.emit('submit_phrase',{content:content.trim()});setHasSubmitted(true)}}}
+              <button onClick={()=>{if(content.trim()&&ws&&!hasSubmitted){ws.emit('submit_phrase',{content:content.trim(),basedOnAuthorId:authorId});setHasSubmitted(true)}}}
                 disabled={!content.trim()}
                 style={{background:content.trim()?'linear-gradient(135deg,#a855f7,#3b82f6)':'rgba(255,255,255,0.06)',color:'#fff',padding:'0.7rem 1.4rem',borderRadius:'10px',fontWeight:800,fontSize:'0.9rem',border:'none',cursor:content.trim()?'pointer':'not-allowed'}}>
                 📤 Envoyer
@@ -734,7 +736,7 @@ function GamePhase({ pseudo, ws, drawMode }) {
           drawMode={drawMode}
           onSubmit={(dataUrl) => {
             if (!hasSubmitted && ws) {
-              ws.emit('submit_drawing', { drawing: dataUrl })
+              ws.emit('submit_drawing', { drawing: dataUrl, basedOnAuthorId: authorId })
               setHasSubmitted(true)
             }
           }}

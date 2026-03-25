@@ -95,7 +95,7 @@ io.on('connection', async (socket) => {
     socket.on('submit_phrase', (data) => {
       const player = gameInstance.players.get(socket)
       if (player) {
-        gameInstance.submitPhrase(player.id, data.content)
+        gameInstance.submitPhrase(player.id, data.content, data.basedOnAuthorId)
         console.log(`📝 Phrase by "${player.name}" (${gameInstance.getSubmissionCount()}/${gameInstance.players.size})`)
         broadcastGameState()
         // Check if everyone submitted
@@ -106,7 +106,7 @@ io.on('connection', async (socket) => {
     socket.on('submit_drawing', (data) => {
       const player = gameInstance.players.get(socket)
       if (player) {
-        gameInstance.submitDrawing(player.id, data.drawing)
+        gameInstance.submitDrawing(player.id, data.drawing, data.basedOnAuthorId)
         console.log(`🎨 Drawing by "${player.name}" (${gameInstance.getSubmissionCount()}/${gameInstance.players.size})`)
         broadcastGameState()
         gameInstance.checkAllSubmitted()
