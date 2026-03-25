@@ -762,10 +762,9 @@ function GamePhase({ pseudo, ws, drawMode }) {
 
   /* RESULTS */
   if (gameState === 'results') {
-    // Préparer les chaînes pour affichage en tableau : chaque colonne = une chaîne complète
-    const chainsArray = Object.entries(allChains);
-    // Trouver la longueur max d'une chaîne (pour le nombre de lignes)
-    const maxSteps = Math.max(0, ...chainsArray.map(([_, chain]) => chain.length));
+    // Afficher les chaînes reconstruites (showcase) et non les soumissions brutes par auteur
+    const chainsArray = showcaseChains || [];
+    const maxSteps = Math.max(0, ...chainsArray.map(chain => chain.length));
 
     return (
       <div style={card}>
@@ -778,10 +777,11 @@ function GamePhase({ pseudo, ws, drawMode }) {
           <table style={{borderCollapse:'separate',borderSpacing:'1rem 0.5rem',width:'100%'}}>
             <thead>
               <tr>
-                {chainsArray.map(([playerId, chain], colIdx) => {
-                  const player = players.find(p=>p.id===playerId);
+                {chainsArray.map((chain, colIdx) => {
+                  const chainOwnerId = chain?.[0]?.author;
+                  const player = players.find(p=>p.id===chainOwnerId);
                   return (
-                    <th key={playerId} style={{textAlign:'center',fontWeight:800,fontSize:'1.05rem',color:'#fff',background:'rgba(168,85,247,0.13)',borderRadius:'10px',padding:'0.7rem'}}>
+                    <th key={chainOwnerId || colIdx} style={{textAlign:'center',fontWeight:800,fontSize:'1.05rem',color:'#fff',background:'rgba(168,85,247,0.13)',borderRadius:'10px',padding:'0.7rem'}}>
                       {player?.avatar||'😀'} {player?.name||'Joueur'}
                     </th>
                   );
@@ -791,7 +791,7 @@ function GamePhase({ pseudo, ws, drawMode }) {
             <tbody>
               {Array.from({length: maxSteps}).map((_, rowIdx) => (
                 <tr key={rowIdx}>
-                  {chainsArray.map(([_, chain], colIdx) => {
+                  {chainsArray.map((chain, colIdx) => {
                     const item = chain[rowIdx];
                     if (!item) {
                       return <td key={colIdx}></td>;
