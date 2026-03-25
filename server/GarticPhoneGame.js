@@ -5,7 +5,7 @@ class GarticPhoneGame {
     this.state = 'waiting' // waiting, phrase, drawing, showcase, results
     this.players = new Map() // socket -> {id, name, avatar}
     this.currentRound = 0
-    this.maxRounds = 3
+    this.maxRounds = 1
     this.timeLeft = 0
     this.phraseTime = 60
     this.drawingTime = 120
@@ -94,12 +94,16 @@ class GarticPhoneGame {
     const activePlayers = Array.from(this.players.values()).map(p => p.id)
     for (const playerId of activePlayers) {
       if (!this.submittedThisRound.has(playerId)) {
+        // Get the basedOnAuthorId from the current assignment
+        const assignment = this.currentAssignment[playerId]?.[0]
+        const basedOnAuthorId = assignment?.author || null
+
         if (this.state === 'phrase') {
-          this.submitPhrase(playerId, '[Non soumis]')
+          this.submitPhrase(playerId, '[Non soumis]', basedOnAuthorId)
         } else if (this.state === 'drawing') {
           // Submit blank white drawing for consistency
           const blankCanvas = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAFggJ/wlseKgAAAABJRU5ErkJggg=='
-          this.submitDrawing(playerId, blankCanvas)
+          this.submitDrawing(playerId, blankCanvas, basedOnAuthorId)
         }
       }
     }
@@ -108,12 +112,14 @@ class GarticPhoneGame {
 
     if (this.state === 'phrase') {
       this.distributePhrases()
+      this.currentRound++
       this.state = 'drawing'
       this.timeLeft = this.drawingTime
     } else if (this.state === 'drawing') {
       this.distributeDrawings()
+      this.currentRound++
 
-      if (this.currentRound >= this.maxRounds) {
+      if (this.currentRound > this.maxRounds) {
         // Go to showcase before results
         this.state = 'showcase'
         this.stopTimer()
@@ -122,7 +128,6 @@ class GarticPhoneGame {
         return
       }
 
-      this.currentRound++
       this.state = 'phrase'
       this.timeLeft = this.phraseTime
     }
@@ -132,30 +137,43 @@ class GarticPhoneGame {
   }
 
   buildShowcase() {
-    // Build an array of chains. Each chain = array of items (phrase/drawing) for one starting player
-    // We reconstruct chains by following assignments
+    // Build chains by following basedOnAuthor links from each first author's phrase
     this.showcaseChains = []
 
-    for (const [startPlayerId] of Object.entries(this.gameData)) {
-      // Collect all items authored by any player, in round order, that belong to this chain
+    const processed = new Set()
+
+    for (const startPlayerId of Object.keys(this.gameData)) {
+      const r1Phrase = this._findItem('phrase', startPlayerId, 1)
+      if (!r1Phrase || processed.has(startPlayerId)) continue
+
       const chain = []
+      let currentItem = r1Phrase
+      let currentAuthor = startPlayerId
 
-      // Round 1: phrase from startPlayer
-      const r1 = this._findItem('phrase', startPlayerId, 1)
-      if (r1) chain.push(r1)
+      for (let round = 1; round <= this.currentRound; round++) {
+        // Add phrase for this round
+        if (currentItem?.type === 'phrase') {
+          chain.push(currentItem)
+          processed.add(currentItem.author)
+        }
 
-      // Round 1: drawing made from that phrase
-      const r1drawing = this._findDrawingForPhrase(r1)
-      if (r1drawing) chain.push(r1drawing)
+        // Find drawing based on current phrase
+        const drawing = this._findDrawingForPhrase(currentItem)
+        if (drawing) {
+          chain.push(drawing)
+          const nextPhrase = this._findItem('phrase', drawing.author, round + 1)
+          currentItem = nextPhrase
+          if (nextPhrase) currentAuthor = nextPhrase.author
+        } else {
+          break
+        }
+      }
 
-      // Round 2+: phrase from drawing, drawing from phrase...
-      // Actually let's just show all items in insertion order for each player
-      // Simpler: just sort all items across all players by round
       if (chain.length > 0) this.showcaseChains.push(chain)
     }
 
-    // Simpler fallback: just put all game data chains as-is
-    if (this.showcaseChains.every(c => c.length === 0)) {
+    // Fallback for orphaned chains
+    if (this.showcaseChains.length === 0) {
       this.showcaseChains = Object.values(this.gameData).filter(c => c.length > 0)
     }
 
@@ -174,7 +192,7 @@ class GarticPhoneGame {
       const drawing = chain.find(item =>
         item.type === 'drawing' &&
         item.round === phraseItem.round &&
-        item.assignedFrom === phraseItem.author
+        item.basedOnAuthor === phraseItem.author
       )
       if (drawing) return drawing
     }
@@ -247,16 +265,20 @@ class GarticPhoneGame {
     this.currentAssignment = assignments
   }
 
-  submitPhrase(playerId, content) {
+  submitPhrase(playerId, content, basedOnAuthorId = null) {
     if (this.gameData[playerId]) {
-      this.gameData[playerId].push({ type: 'phrase', content, author: playerId, round: this.currentRound })
+      const item = { type: 'phrase', content, author: playerId, round: this.currentRound }
+      if (basedOnAuthorId) item.basedOnAuthor = basedOnAuthorId
+      this.gameData[playerId].push(item)
     }
     this.submittedThisRound.add(playerId)
   }
 
-  submitDrawing(playerId, drawingData) {
+  submitDrawing(playerId, drawingData, basedOnAuthorId = null) {
     if (this.gameData[playerId]) {
-      this.gameData[playerId].push({ type: 'drawing', content: drawingData, author: playerId, round: this.currentRound })
+      const item = { type: 'drawing', content: drawingData, author: playerId, round: this.currentRound }
+      if (basedOnAuthorId) item.basedOnAuthor = basedOnAuthorId
+      this.gameData[playerId].push(item)
     }
     this.submittedThisRound.add(playerId)
   }
