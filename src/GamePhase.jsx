@@ -390,6 +390,13 @@ function DrawingPhase({ currentContent, timeLeft, maxTime, hasSubmitted, onSubmi
     onSubmit(canvasRef.current.toDataURL())
   }
 
+  // Auto-submit drawing when timer expires
+  useEffect(() => {
+    if (timeLeft === 0 && !hasSubmitted && canvasRef.current) {
+      onSubmit(canvasRef.current.toDataURL())
+    }
+  }, [timeLeft, hasSubmitted, canvasRef, onSubmit])
+
   return (
     <div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.8rem',flexWrap:'wrap',gap:'0.5rem'}}>
@@ -613,6 +620,14 @@ function GamePhase({ pseudo, ws, drawMode }) {
   }, [ws])
 
   const handleStartGame = () => ws?.emit('start_game')
+
+  // Auto-submit when timer expires
+  useEffect(() => {
+    if (timeLeft === 0 && !hasSubmitted && gameState === 'phrase' && content.trim()) {
+      ws?.emit('submit_phrase', { content: content.trim() })
+      setHasSubmitted(true)
+    }
+  }, [timeLeft, hasSubmitted, gameState, content, ws])
 
   const card = {background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'1.5rem',boxShadow:'var(--shadow)',width:'100%'}
 

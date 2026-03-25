@@ -43,6 +43,7 @@ class GarticPhoneGame {
   startGame() {
     if (this.players.size < 2) return false
 
+    this.maxRounds = this.players.size
     this.currentRound = 1
     this.state = 'phrase'
     this.timeLeft = this.phraseTime
@@ -89,6 +90,20 @@ class GarticPhoneGame {
   }
 
   advancePhase() {
+    // Auto-submit empty content for players who didn't submit this round
+    const activePlayers = Array.from(this.players.values()).map(p => p.id)
+    for (const playerId of activePlayers) {
+      if (!this.submittedThisRound.has(playerId)) {
+        if (this.state === 'phrase') {
+          this.submitPhrase(playerId, '[Non soumis]')
+        } else if (this.state === 'drawing') {
+          // Submit blank white drawing for consistency
+          const blankCanvas = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAFggJ/wlseKgAAAABJRU5ErkJggg=='
+          this.submitDrawing(playerId, blankCanvas)
+        }
+      }
+    }
+
     this.submittedThisRound = new Set()
 
     if (this.state === 'phrase') {
