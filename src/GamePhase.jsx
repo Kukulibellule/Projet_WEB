@@ -1,3 +1,69 @@
+// Composant pour la saisie de phrase avec contraintes (debuffs)
+function PhraseInputWithDebuffs({ value, setValue, debuffs, ws, hasSubmitted, authorId, setHasSubmitted, maxLen }) {
+  const [error, setError] = useState('');
+  // Générer les regex/interdictions
+  const banRegexes = debuffs.filter(d => d.regex).map(d => d.regex);
+  const banSpace = debuffs.some(d => d.id === 'no-space');
+  const max12 = debuffs.some(d => d.id === 'max-12');
+
+  // Validation à chaque changement
+  const validate = (txt) => {
+    if (banRegexes.some(r => r.test(txt))) {
+      setError('Séquence interdite utilisée !');
+      return false;
+    }
+    if (banSpace && /\s/.test(txt)) {
+      setError('Les espaces sont interdits !');
+      return false;
+    }
+    if (max12 && txt.length > 12) {
+      setError('12 caractères maximum !');
+      return false;
+    }
+    setError('');
+    return true;
+  };
+
+  // Sur changement
+  const handleChange = (e) => {
+    let txt = e.target.value;
+    if (max12 && txt.length > 12) txt = txt.slice(0, 12);
+    setValue(txt);
+    validate(txt);
+  };
+
+  // Sur soumission
+  const handleSubmit = () => {
+    if (!value.trim() || hasSubmitted) return;
+    if (!validate(value)) return;
+    ws?.emit('submit_phrase', { content: value.trim(), basedOnAuthorId: authorId });
+    setHasSubmitted(true);
+  };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'0.8rem'}}>
+      <textarea
+        value={value}
+        onChange={handleChange}
+        placeholder="Décris quelque chose d'original... 🤪"
+        maxLength={maxLen}
+        rows={3}
+        style={{resize:'vertical',minHeight:'80px',border:error?'2px solid #fca5a5':undefined}}
+      />
+      {error && <div style={{color:'#fca5a5',fontWeight:700,fontSize:'0.95rem'}}>{error}</div>}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:'0.8rem',color:'rgba(255,255,255,0.3)'}}>{value.length}/{max12?12:maxLen}</span>
+        <button
+          onClick={handleSubmit}
+          disabled={!value.trim() || !!error}
+          style={{background:(!value.trim()||!!error)?'rgba(255,255,255,0.06)':'linear-gradient(135deg,#a855f7,#3b82f6)',color:'#fff',padding:'0.7rem 1.4rem',borderRadius:'10px',fontWeight:800,fontSize:'0.9rem',border:'none',cursor:(!value.trim()||!!error)?'not-allowed':'pointer'}}
+        >
+          📤 Envoyer
+        </button>
+      </div>
+    </div>
+  );
+}
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 /* ═══════════════════════════════════════════════════════════
@@ -372,7 +438,7 @@ function usePixelCanvas() {
 /* ═══════════════════════════════════════════════════════════
    DRAWING PHASE (mode-aware)
 ══════════════════════════════════════════════════════════════ */
-function DrawingPhase({ currentContent, timeLeft, maxTime, hasSubmitted, onSubmit, submittedCount, totalPlayers, drawMode }) {
+function DrawingPhase({ currentContent, timeLeft, maxTime, hasSubmitted, onSubmit, submittedCount, totalPlayers, drawMode, debuffs = [] }) {
   const pixel = usePixelCanvas()
   const normal = useNormalCanvas()
 
@@ -385,17 +451,84 @@ function DrawingPhase({ currentContent, timeLeft, maxTime, hasSubmitted, onSubmi
   const tool = isPixel ? pixel.tool : normal.tool
   const setTool = isPixel ? pixel.setTool : normal.setTool
 
+  // Debuffs dessin
+  const debuffIds = debuffs.map(d => d.id)
+  const disableEraser = debuffIds.includes('no-eraser')
+  const bwOnly = debuffIds.includes('bw-only')
+  const noPreview = debuffIds.includes('no-preview')
+  const noShapes = debuffIds.includes('no-shapes')
+  const onlyShapes = debuffIds.includes('only-shapes')
+
+  // Pour masquer le tracé en temps réel
+  const [hiddenImage, setHiddenImage] = useState(null)
+  useEffect(() => {
+    if (!noPreview) return
+    // Sauvegarde l'état du canvas au début
+    if (canvasRef.current) {
+      setHiddenImage(canvasRef.current.toDataURL())
+    }
+  }, [noPreview])
+
+  // Empêche l'affichage du tracé si debuff actif
+  useEffect(() => {
+    if (!noPreview || !canvasRef.current || !hiddenImage) return
+    const ctx = canvasRef.current.getContext('2d')
+    const img = new window.Image()
+    img.src = hiddenImage
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
+      ctx.drawImage(img, 0, 0)
+    }
+  })
+
+  // Auto-submit drawing when timer expires
   const handleSubmit = () => {
     if (hasSubmitted || !canvasRef.current) return
     onSubmit(canvasRef.current.toDataURL())
   }
-
-  // Auto-submit drawing when timer expires
   useEffect(() => {
     if (timeLeft === 0 && !hasSubmitted && canvasRef.current) {
       onSubmit(canvasRef.current.toDataURL())
     }
   }, [timeLeft, hasSubmitted, canvasRef, onSubmit])
+
+  // Palette restreinte si bwOnly
+  const BW_PALETTE = ['#000000', '#ffffff']
+  // Outils autorisés
+  let allowedTools = ['pen']
+  if (!onlyShapes) allowedTools.push('eraser')
+  if (!noShapes) allowedTools = allowedTools.concat(['line','rect','circle','triangle'])
+  if (onlyShapes) allowedTools = ['line','rect','circle','triangle']
+
+  // Toolbar custom
+  function CustomPixelToolbar(props) {
+    return (
+      <PixelToolbar
+        {...props}
+        tool={allowedTools.includes(props.tool) ? props.tool : allowedTools[0]}
+        setTool={t => allowedTools.includes(t) && props.setTool(t)}
+        onUndo={disableEraser ? undefined : props.onUndo}
+        onClear={disableEraser ? undefined : props.onClear}
+        color={bwOnly ? (BW_PALETTE.includes(props.color) ? props.color : '#000000') : props.color}
+        setColor={bwOnly ? c => BW_PALETTE.includes(c) && props.setColor(c) : props.setColor}
+        // Palette restreinte
+        PALETTE={bwOnly ? BW_PALETTE : undefined}
+      />
+    )
+  }
+  function CustomNormalToolbar(props) {
+    return (
+      <NormalToolbar
+        {...props}
+        tool={allowedTools.includes(props.tool) ? props.tool : allowedTools[0]}
+        setTool={t => allowedTools.includes(t) && props.setTool(t)}
+        onUndo={disableEraser ? undefined : props.onUndo}
+        onClear={disableEraser ? undefined : props.onClear}
+        color={bwOnly ? (BW_PALETTE.includes(props.color) ? props.color : '#000000') : props.color}
+        setColor={bwOnly ? c => BW_PALETTE.includes(c) && props.setColor(c) : props.setColor}
+      />
+    )
+  }
 
   return (
     <div>
@@ -420,9 +553,29 @@ function DrawingPhase({ currentContent, timeLeft, maxTime, hasSubmitted, onSubmi
       ) : (
         <div style={{display:'flex',gap:'1rem',alignItems:'flex-start',flexWrap:'wrap'}}>
           {isPixel ? (
-            <PixelToolbar color={color} setColor={setColor} brushSize={brushSize} setBrushSize={setBrushSize} tool={tool} setTool={setTool} onClear={pixel.handleClear} onUndo={pixel.handleUndo} fillMode={pixel.fillMode} setFillMode={pixel.setFillMode} />
+            <CustomPixelToolbar
+              color={color}
+              setColor={setColor}
+              brushSize={brushSize}
+              setBrushSize={setBrushSize}
+              tool={tool}
+              setTool={setTool}
+              onClear={pixel.handleClear}
+              onUndo={pixel.handleUndo}
+              fillMode={pixel.fillMode}
+              setFillMode={pixel.setFillMode}
+            />
           ) : (
-            <NormalToolbar color={color} setColor={setColor} brushSize={brushSize} setBrushSize={setBrushSize} tool={tool} setTool={setTool} onClear={normal.handleClear} onUndo={normal.handleUndo} />
+            <CustomNormalToolbar
+              color={color}
+              setColor={setColor}
+              brushSize={brushSize}
+              setBrushSize={setBrushSize}
+              tool={tool}
+              setTool={setTool}
+              onClear={normal.handleClear}
+              onUndo={normal.handleUndo}
+            />
           )}
 
           <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:'0.8rem',alignItems:'center'}}>
@@ -432,7 +585,7 @@ function DrawingPhase({ currentContent, timeLeft, maxTime, hasSubmitted, onSubmi
                   ref={pixel.canvasRef}
                   width={CANVAS_W*PIXEL_SIZE} height={CANVAS_H*PIXEL_SIZE}
                   style={{display:'block',imageRendering:'pixelated',touchAction:'none'}}
-                  onMouseDown={pixel.handleMouseDown} onMouseMove={pixel.handleMouseMove}
+                  onMouseDown={pixel.handleMouseDown} onMouseMove={noPreview?undefined:pixel.handleMouseMove}
                   onMouseUp={pixel.handleMouseUp} onMouseLeave={pixel.handleMouseUp}
                 />
               </div>
@@ -441,7 +594,7 @@ function DrawingPhase({ currentContent, timeLeft, maxTime, hasSubmitted, onSubmi
                 <canvas
                   ref={normal.canvasRef}
                   style={{display:'block',width:'100%',touchAction:'none'}}
-                  onMouseDown={normal.handleMouseDown} onMouseMove={normal.handleMouseMove}
+                  onMouseDown={normal.handleMouseDown} onMouseMove={noPreview?undefined:normal.handleMouseMove}
                   onMouseUp={normal.handleMouseUp} onMouseLeave={normal.handleMouseUp}
                 />
               </div>
@@ -581,7 +734,43 @@ function GamePhase({ pseudo, ws, drawMode }) {
   const [showcaseIndex, setShowcaseIndex] = useState(0)
   const [maxTime, setMaxTime] = useState(MAX_DRAW_TIME)
   const [authorId, setAuthorId] = useState(null)
+  const [drawingDebuffs, setDrawingDebuffs] = useState([])
+  const [phraseDebuffs, setPhraseDebuffs] = useState([])
   const prevState = useRef(null)
+
+  // Définition des debuffs disponibles
+  const DRAW_DEBUFFS = [
+    { id: 'no-eraser', label: 'Gomme, annuler et effacer désactivés' },
+    { id: 'bw-only', label: 'Couleurs limitées à noir et blanc' },
+    { id: 'no-preview', label: 'Tracé masqué en temps réel' },
+    { id: 'no-shapes', label: 'Formes prédéfinies interdites' },
+    { id: 'only-shapes', label: 'Seules les formes prédéfinies sont autorisées' },
+  ];
+  const PHRASE_DEBUFFS = [
+    { id: 'ban-web-nas', label: 'Interdiction des séquences "WEB" et "NAS"', regex: /(WEB|NAS)/i },
+    { id: 'ban-inr-pale', label: 'Interdiction des séquences "INR" et "PALE"', regex: /(INR|PALE)/i },
+    { id: 'ban-mpls-vpn', label: 'Interdiction des séquences "MPLS" et "VPN"', regex: /(MPLS|VPN)/i },
+    { id: 'no-space', label: 'Espaces interdits' },
+    { id: 'max-12', label: 'Longueur max : 12 caractères' },
+  ];
+
+  // Tirage aléatoire des debuffs à chaque début de round
+  useEffect(() => {
+    if (gameState === 'drawing') {
+      // 1 à 2 debuffs dessin aléatoires
+      const shuffled = [...DRAW_DEBUFFS].sort(() => Math.random() - 0.5)
+      const count = Math.random() < 0.5 ? 1 : 2
+      setDrawingDebuffs(shuffled.slice(0, count))
+    } else if (gameState === 'phrase') {
+      // 1 à 2 debuffs texte aléatoires
+      const shuffled = [...PHRASE_DEBUFFS].sort(() => Math.random() - 0.5)
+      const count = Math.random() < 0.5 ? 1 : 2
+      setPhraseDebuffs(shuffled.slice(0, count))
+    } else {
+      setDrawingDebuffs([])
+      setPhraseDebuffs([])
+    }
+  }, [gameState, currentRound])
 
   useEffect(() => {
     if (!ws) return
@@ -693,6 +882,12 @@ function GamePhase({ pseudo, ws, drawMode }) {
             <TimerChip timeLeft={timeLeft} />
           </div>
         </div>
+        {/* Affichage des contraintes actives */}
+        {phraseDebuffs.length > 0 && (
+          <div style={{background:'rgba(239,68,68,0.09)',border:'1px solid rgba(239,68,68,0.18)',borderRadius:'10px',padding:'0.7rem 1rem',marginBottom:'1rem',color:'#fca5a5',fontWeight:700,fontSize:'0.98rem'}}>
+            Contraintes du round : {phraseDebuffs.map(d => d.label).join(' · ')}
+          </div>
+        )}
         <TimerBar timeLeft={timeLeft} maxTime={maxTime} />
 
         {currentContent && (
@@ -705,18 +900,16 @@ function GamePhase({ pseudo, ws, drawMode }) {
         {hasSubmitted ? (
           <SubmittedBanner label="phrase" submittedCount={submittedCount} totalPlayers={players.length} />
         ) : (
-          <div style={{display:'flex',flexDirection:'column',gap:'0.8rem'}}>
-            <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Décris quelque chose d'original... 🤪" maxLength={200} rows={3}
-              style={{resize:'vertical',minHeight:'80px'}}/>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span style={{fontSize:'0.8rem',color:'rgba(255,255,255,0.3)'}}>{content.length}/200</span>
-              <button onClick={()=>{if(content.trim()&&ws&&!hasSubmitted){ws.emit('submit_phrase',{content:content.trim(),basedOnAuthorId:authorId});setHasSubmitted(true)}}}
-                disabled={!content.trim()}
-                style={{background:content.trim()?'linear-gradient(135deg,#a855f7,#3b82f6)':'rgba(255,255,255,0.06)',color:'#fff',padding:'0.7rem 1.4rem',borderRadius:'10px',fontWeight:800,fontSize:'0.9rem',border:'none',cursor:content.trim()?'pointer':'not-allowed'}}>
-                📤 Envoyer
-              </button>
-            </div>
-          </div>
+          <PhraseInputWithDebuffs
+            value={content}
+            setValue={setContent}
+            debuffs={phraseDebuffs}
+            ws={ws}
+            hasSubmitted={hasSubmitted}
+            authorId={authorId}
+            setHasSubmitted={setHasSubmitted}
+            maxLen={200}
+          />
         )}
       </div>
     )
@@ -726,6 +919,12 @@ function GamePhase({ pseudo, ws, drawMode }) {
   if (gameState === 'drawing') {
     return (
       <div style={card}>
+        {/* Affichage des debuffs actifs */}
+        {drawingDebuffs.length > 0 && (
+          <div style={{background:'rgba(239,68,68,0.09)',border:'1px solid rgba(239,68,68,0.18)',borderRadius:'10px',padding:'0.7rem 1rem',marginBottom:'1rem',color:'#fca5a5',fontWeight:700,fontSize:'0.98rem'}}>
+            Debuffs du round : {drawingDebuffs.map(d => d.label).join(' · ')}
+          </div>
+        )}
         <DrawingPhase
           currentContent={currentContent}
           timeLeft={timeLeft}
@@ -734,6 +933,7 @@ function GamePhase({ pseudo, ws, drawMode }) {
           submittedCount={submittedCount}
           totalPlayers={players.length}
           drawMode={drawMode}
+          debuffs={drawingDebuffs}
           onSubmit={(dataUrl) => {
             if (!hasSubmitted && ws) {
               ws.emit('submit_drawing', { drawing: dataUrl, basedOnAuthorId: authorId })
