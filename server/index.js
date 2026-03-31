@@ -35,12 +35,44 @@ const io = new Server(httpServer, {
 
 const onlineUsers = new Map()
 let isMongoConnected = false
+let hasClearedMessagesAfterResults = false
 
 const gameInstance = new GarticPhoneGame()
 
 function sanitizeText(value, maxLength) {
   if (typeof value !== 'string') return ''
   return value.trim().replace(/\s+/g, ' ').slice(0, maxLength)
+}
+
+function toClientMessage(messageDoc) {
+  return {
+    pseudo: messageDoc.pseudo,
+    content: messageDoc.content,
+    timestamp: messageDoc.createdAt,
+  }
+}
+
+async function persistAndBroadcastMessage(pseudo, rawContent) {
+  const safePseudo = sanitizeText(pseudo, MAX_PSEUDO_LENGTH)
+  const safeContent = sanitizeText(rawContent, 400)
+  if (!safePseudo || !safeContent) return null
+
+  if (!isMongoConnected) {
+    const fallbackMessage = { pseudo: safePseudo, content: safeContent, timestamp: new Date() }
+    io.emit('new_message', fallbackMessage)
+    return fallbackMessage
+  }
+
+  const created = await Message.create({ pseudo: safePseudo, content: safeContent })
+  const payload = toClientMessage(created)
+  io.emit('new_message', payload)
+  return payload
+}
+
+async function clearMessagesAtGameEnd() {
+  if (!isMongoConnected) return
+  await Message.deleteMany({})
+  io.emit('messages_cleared')
 }
 
 function broadcastGameState() {
@@ -65,6 +97,44 @@ function broadcastCountdown() {
   } catch (err) { console.error('broadcastCountdown error:', err) }
 }
 
+app.get('/api/messages', async (_req, res) => {
+  try {
+    if (!isMongoConnected) {
+      res.json({ messages: [] })
+      return
+    }
+
+    const docs = await Message.find({}).sort({ createdAt: 1 }).limit(400).lean()
+    res.json({
+      messages: docs.map(doc => ({
+        pseudo: doc.pseudo,
+        content: doc.content,
+        timestamp: doc.createdAt,
+      })),
+    })
+  } catch (err) {
+    console.error('GET /api/messages error:', err)
+    res.status(500).json({ error: 'Unable to fetch messages' })
+  }
+})
+
+app.post('/api/messages', async (req, res) => {
+  try {
+    const pseudo = req.body?.pseudo
+    const content = req.body?.content
+    const created = await persistAndBroadcastMessage(pseudo, content)
+    if (!created) {
+      res.status(400).json({ error: 'Pseudo or message content invalid' })
+      return
+    }
+
+    res.status(201).json({ message: created })
+  } catch (err) {
+    console.error('POST /api/messages error:', err)
+    res.status(500).json({ error: 'Unable to save message' })
+  }
+})
+
 io.on('connection', async (socket) => {
   try {
     socket.on('user_join_game', (payload) => {
@@ -75,7 +145,7 @@ io.on('connection', async (socket) => {
       console.log(`✅ User "${pseudo}" authenticated`)
     })
 
-    socket.on('join_game', (data) => {
+      socket.on('join_game', (data) => {
       const playerData = { id: socket.id, name: data.name, avatar: '😀' }
       gameInstance.addPlayer(socket, playerData)
       broadcastGameState()
@@ -83,8 +153,21 @@ io.on('connection', async (socket) => {
     })
 
     socket.on('start_game', () => {
+      hasClearedMessagesAfterResults = false
       gameInstance.onTick = () => broadcastCountdown()
-      gameInstance.onPhaseChange = () => { broadcastGameState(); broadcastCountdown() }
+      gameInstance.onPhaseChange = async (gameState) => {
+        broadcastGameState()
+        broadcastCountdown()
+
+        if (gameState?.state === 'results' && !hasClearedMessagesAfterResults) {
+          hasClearedMessagesAfterResults = true
+          try {
+            await clearMessagesAtGameEnd()
+          } catch (err) {
+            console.error('Failed to clear messages after game:', err)
+          }
+        }
+      }
       if (gameInstance.startGame()) {
         broadcastGameState()
         broadcastCountdown()
@@ -124,8 +207,9 @@ io.on('connection', async (socket) => {
     socket.on('send_message', (data) => {
       const pseudo = onlineUsers.get(socket.id)
       if (pseudo) {
-        const message = { pseudo, content: sanitizeText(data.content, 400), timestamp: new Date() }
-        io.emit('new_message', message)
+        persistAndBroadcastMessage(pseudo, data?.content).catch((err) => {
+          console.error('send_message persistence error:', err)
+        })
       }
     })
 
