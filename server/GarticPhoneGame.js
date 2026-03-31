@@ -21,6 +21,7 @@ class GarticPhoneGame {
     // Showcase state
     this.showcaseChains = []   // array of chains to show
     this.showcaseIndex = 0     // current chain being shown
+    this.chainSequence = 0
 
     this.timer = null
     this.onTick = null
@@ -50,6 +51,7 @@ class GarticPhoneGame {
     this.currentContent = null
     this.currentAssignment = {}
     this.submittedThisRound = new Set()
+    this.chainSequence = 0
 
     // Reset game data
     this.gameData = {}
@@ -113,14 +115,21 @@ class GarticPhoneGame {
     if (this.state === 'phrase') {
       this.distributePhrases()
       this.currentRound++
+      
+      if (this.currentRound > this.maxRounds) {
+        this.state = 'showcase'
+        this.stopTimer()
+        this.buildShowcase()
+        if (typeof this.onPhaseChange === 'function') this.onPhaseChange(this.getGameState())
+        return
+      }
+      
       this.state = 'drawing'
       this.timeLeft = this.drawingTime
     } else if (this.state === 'drawing') {
       this.distributeDrawings()
-      this.currentRound++
 
-      if (this.currentRound > this.maxRounds) {
-        // Go to showcase before results
+      if (this.currentRound >= this.maxRounds) {
         this.state = 'showcase'
         this.stopTimer()
         this.buildShowcase()
@@ -128,6 +137,7 @@ class GarticPhoneGame {
         return
       }
 
+      this.currentRound++
       this.state = 'phrase'
       this.timeLeft = this.phraseTime
     }
@@ -137,42 +147,24 @@ class GarticPhoneGame {
   }
 
   buildShowcase() {
-    // Build chains by following basedOnAuthor links from each first author's phrase
-    this.showcaseChains = []
+    const chainsById = new Map()
 
-    const processed = new Set()
-
-    for (const startPlayerId of Object.keys(this.gameData)) {
-      const r1Phrase = this._findItem('phrase', startPlayerId, 1)
-      if (!r1Phrase || processed.has(startPlayerId)) continue
-
-      const chain = []
-      let currentItem = r1Phrase
-      let currentAuthor = startPlayerId
-
-      for (let round = 1; round <= this.currentRound; round++) {
-        // Add phrase for this round
-        if (currentItem?.type === 'phrase') {
-          chain.push(currentItem)
-          processed.add(currentItem.author)
-        }
-
-        // Find drawing based on current phrase
-        const drawing = this._findDrawingForPhrase(currentItem)
-        if (drawing) {
-          chain.push(drawing)
-          const nextPhrase = this._findItem('phrase', drawing.author, round + 1)
-          currentItem = nextPhrase
-          if (nextPhrase) currentAuthor = nextPhrase.author
-        } else {
-          break
-        }
+    for (const playerChain of Object.values(this.gameData)) {
+      for (const item of playerChain) {
+        if (!item.chainId) continue
+        if (!chainsById.has(item.chainId)) chainsById.set(item.chainId, [])
+        chainsById.get(item.chainId).push(item)
       }
-
-      if (chain.length > 0) this.showcaseChains.push(chain)
     }
 
-    // Fallback for orphaned chains
+    this.showcaseChains = Array.from(chainsById.values())
+      .map((items) => items.sort((a, b) => {
+        if (a.round !== b.round) return a.round - b.round
+        if (a.type === b.type) return 0
+        return a.type === 'phrase' ? -1 : 1
+      }))
+      .filter(items => items.length > 0)
+
     if (this.showcaseChains.length === 0) {
       this.showcaseChains = Object.values(this.gameData).filter(c => c.length > 0)
     }
@@ -184,19 +176,6 @@ class GarticPhoneGame {
     const chain = this.gameData[authorId]
     if (!chain) return null
     return chain.find(item => item.type === type && item.round === round) || null
-  }
-
-  _findDrawingForPhrase(phraseItem) {
-    if (!phraseItem) return null
-    for (const chain of Object.values(this.gameData)) {
-      const drawing = chain.find(item =>
-        item.type === 'drawing' &&
-        item.round === phraseItem.round &&
-        item.basedOnAuthor === phraseItem.author
-      )
-      if (drawing) return drawing
-    }
-    return null
   }
 
   nextShowcase() {
@@ -216,26 +195,7 @@ class GarticPhoneGame {
       if (item) phrases.push({ ...item, ownerId: playerId })
     }
 
-    const playerIds = Array.from(this.players.values()).map(p => p.id)
-    const assignments = {}
-
-    // Ensure each player gets exactly one phrase (not their own if possible)
-    const shuffled = [...playerIds].sort(() => Math.random() - 0.5)
-    const phraseQueue = [...phrases].sort(() => Math.random() - 0.5)
-
-    for (let i = 0; i < shuffled.length; i++) {
-      const assignee = shuffled[i]
-      // find a phrase not authored by assignee
-      let phraseIdx = phraseQueue.findIndex(p => p.author !== assignee)
-      if (phraseIdx === -1) phraseIdx = 0
-      const phrase = phraseQueue.splice(phraseIdx, 1)[0]
-      if (phrase) {
-        if (!assignments[assignee]) assignments[assignee] = []
-        assignments[assignee].push(phrase)
-      }
-    }
-
-    this.currentAssignment = assignments
+    this._assignWithoutSelf(phrases)
   }
 
   distributeDrawings() {
@@ -245,21 +205,70 @@ class GarticPhoneGame {
       if (item) drawings.push({ ...item, ownerId: playerId })
     }
 
+    this._assignWithoutSelf(drawings)
+  }
+
+  _assignWithoutSelf(items) {
     const playerIds = Array.from(this.players.values()).map(p => p.id)
     const assignments = {}
+    for (const playerId of playerIds) assignments[playerId] = []
 
-    const shuffled = [...playerIds].sort(() => Math.random() - 0.5)
-    const drawingQueue = [...drawings].sort(() => Math.random() - 0.5)
+    if (!items.length || !playerIds.length) {
+      this.currentAssignment = assignments
+      return
+    }
 
-    for (let i = 0; i < shuffled.length; i++) {
-      const assignee = shuffled[i]
-      let drawingIdx = drawingQueue.findIndex(d => d.author !== assignee)
-      if (drawingIdx === -1) drawingIdx = 0
-      const drawing = drawingQueue.splice(drawingIdx, 1)[0]
-      if (drawing) {
-        if (!assignments[assignee]) assignments[assignee] = []
-        assignments[assignee].push(drawing)
+    const players = [...playerIds].sort(() => Math.random() - 0.5)
+    const pool = [...items].sort(() => Math.random() - 0.5)
+    const used = new Set()
+    const chosen = {}
+
+    const solve = (idx) => {
+      if (idx >= players.length) return true
+
+      const playerId = players[idx]
+      const candidates = []
+      for (let i = 0; i < pool.length; i++) {
+        if (used.has(i)) continue
+        if (pool[i].author === playerId) continue
+        if (pool[i].rootAuthor === playerId) continue
+        candidates.push(i)
       }
+
+      for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        const tmp = candidates[i]
+        candidates[i] = candidates[j]
+        candidates[j] = tmp
+      }
+
+      for (const itemIdx of candidates) {
+        used.add(itemIdx)
+        chosen[playerId] = pool[itemIdx]
+        if (solve(idx + 1)) return true
+        used.delete(itemIdx)
+        delete chosen[playerId]
+      }
+
+      return false
+    }
+
+    const hasPerfectMatching = solve(0)
+
+    if (hasPerfectMatching) {
+      for (const playerId of playerIds) {
+        if (chosen[playerId]) assignments[playerId].push(chosen[playerId])
+      }
+      this.currentAssignment = assignments
+      return
+    }
+
+    // Safety fallback: do the best possible assignment without forcing self items.
+    const remaining = [...pool]
+    for (const playerId of players) {
+      const idx = remaining.findIndex(item => item.author !== playerId && item.rootAuthor !== playerId)
+      if (idx === -1) continue
+      assignments[playerId].push(remaining.splice(idx, 1)[0])
     }
 
     this.currentAssignment = assignments
@@ -267,8 +276,17 @@ class GarticPhoneGame {
 
   submitPhrase(playerId, content, basedOnAuthorId = null) {
     if (this.gameData[playerId]) {
-      const item = { type: 'phrase', content, author: playerId, round: this.currentRound }
-      if (basedOnAuthorId) item.basedOnAuthor = basedOnAuthorId
+      const assignment = this.currentAssignment[playerId]?.[0]
+      const chainId = this.currentRound === 1
+        ? this._nextChainId(playerId)
+        : (assignment?.chainId || `orphan:${playerId}:${this.currentRound}`)
+      const rootAuthor = this.currentRound === 1
+        ? playerId
+        : (assignment?.rootAuthor || null)
+      const resolvedBasedOnAuthor = assignment?.author || basedOnAuthorId || null
+
+      const item = { type: 'phrase', content, author: playerId, round: this.currentRound, chainId, rootAuthor }
+      if (resolvedBasedOnAuthor) item.basedOnAuthor = resolvedBasedOnAuthor
       this.gameData[playerId].push(item)
     }
     this.submittedThisRound.add(playerId)
@@ -276,11 +294,21 @@ class GarticPhoneGame {
 
   submitDrawing(playerId, drawingData, basedOnAuthorId = null) {
     if (this.gameData[playerId]) {
-      const item = { type: 'drawing', content: drawingData, author: playerId, round: this.currentRound }
-      if (basedOnAuthorId) item.basedOnAuthor = basedOnAuthorId
+      const assignment = this.currentAssignment[playerId]?.[0]
+      const chainId = assignment?.chainId || `orphan:${playerId}:${this.currentRound}`
+      const rootAuthor = assignment?.rootAuthor || null
+      const resolvedBasedOnAuthor = assignment?.author || basedOnAuthorId || null
+
+      const item = { type: 'drawing', content: drawingData, author: playerId, round: this.currentRound, chainId, rootAuthor }
+      if (resolvedBasedOnAuthor) item.basedOnAuthor = resolvedBasedOnAuthor
       this.gameData[playerId].push(item)
     }
     this.submittedThisRound.add(playerId)
+  }
+
+  _nextChainId(playerId) {
+    this.chainSequence += 1
+    return `${playerId}-${this.chainSequence}`
   }
 
   getSubmissionCount() {
