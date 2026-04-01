@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { io } from 'socket.io-client'
+import GamePhase from './GamePhase.jsx'
 import './App.css'
 
-const PSEUDO_STORAGE_KEY = 'chat:pseudo'
+const PSEUDO_STORAGE_KEY = 'gartic:pseudo'
+const MODE_STORAGE_KEY = 'gartic:mode'
 
 function App() {
   const [pseudoInput, setPseudoInput] = useState(() => localStorage.getItem(PSEUDO_STORAGE_KEY) ?? '')
   const [pseudo, setPseudo] = useState('')
-  const [messageInput, setMessageInput] = useState('')
-  const [messages, setMessages] = useState([])
   const [error, setError] = useState('')
   const [connected, setConnected] = useState(false)
-  const messagesRef = useRef(null)
+  const [ws, setWs] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [messageInput, setMessageInput] = useState('')
+  const [drawMode, setDrawMode] = useState(() => localStorage.getItem(MODE_STORAGE_KEY) ?? 'pixel')
 
   const socket = useMemo(() => {
     const serverUrl = import.meta.env.VITE_CHAT_SERVER_URL ?? window.location.origin
@@ -19,171 +22,174 @@ function App() {
   }, [])
 
   useEffect(() => {
-    socket.connect()
+    if (!pseudo) return
 
-    socket.on('connect', () => {
-      setConnected(true)
-      setError('')
-
-      const savedPseudo = localStorage.getItem(PSEUDO_STORAGE_KEY)?.trim()
-      if (savedPseudo) {
-        socket.emit('user_join', { pseudo: savedPseudo })
+    let cancelled = false
+    const loadMessages = async () => {
+      try {
+        const res = await fetch('/api/messages')
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) setMessages(Array.isArray(data.messages) ? data.messages : [])
+      } catch {
+        // Keep current chat state if loading fails.
       }
-    })
+    }
 
-    socket.on('disconnect', () => {
-      setConnected(false)
-      setError('Connexion au serveur perdue.')
-    })
+    loadMessages()
+    return () => { cancelled = true }
+  }, [pseudo])
 
-    socket.on('connect_error', (err) => {
-      setConnected(false)
-      setError(`Serveur de chat indisponible (${err.message}).`) 
+  useEffect(() => {
+    socket.connect()
+    socket.on('connect', () => {
+      setConnected(true); setError('')
+      const saved = localStorage.getItem(PSEUDO_STORAGE_KEY)?.trim()
+      if (saved) socket.emit('user_join_game', { pseudo: saved })
     })
-
-    socket.on('chat_history', (history) => {
-      setMessages(history.map((message) => ({ ...message, kind: 'user' })))
+    socket.on('disconnect', () => { setConnected(false); setError('Connexion perdue.') })
+    socket.on('connect_error', (err) => { setConnected(false); setError(`Serveur indisponible (${err.message}).`) })
+    socket.on('join_ok', ({ pseudo: p }) => {
+      setPseudo(p); setPseudoInput(p)
+      localStorage.setItem(PSEUDO_STORAGE_KEY, p)
+      setError(''); setWs(socket)
+      socket.emit('join_game', { name: p })
     })
-
-    socket.on('new_message', (message) => {
-      setMessages((prev) => [...prev, { ...message, kind: 'user' }])
-    })
-
-    socket.on('system_message', (message) => {
-      setMessages((prev) => [...prev, { ...message, kind: 'system' }])
-    })
-
-    socket.on('chat_error', (message) => {
-      setError(message)
-    })
-
-    socket.on('join_error', (message) => {
-      setError(message)
-    })
-
-    socket.on('join_ok', ({ pseudo: acceptedPseudo }) => {
-      setPseudo(acceptedPseudo)
-      setPseudoInput(acceptedPseudo)
-      localStorage.setItem(PSEUDO_STORAGE_KEY, acceptedPseudo)
-      setError('')
-    })
-
+    socket.on('join_error', (msg) => setError(msg))
+    socket.on('new_message', (msg) => setMessages(prev => [...prev.slice(-100), msg]))
+    socket.on('messages_cleared', () => setMessages([]))
     return () => {
-      socket.off('connect')
-      socket.off('disconnect')
-      socket.off('connect_error')
-      socket.off('chat_history')
-      socket.off('new_message')
-      socket.off('system_message')
-      socket.off('chat_error')
-      socket.off('join_error')
-      socket.off('join_ok')
+      socket.off('connect'); socket.off('disconnect'); socket.off('connect_error')
+      socket.off('join_ok'); socket.off('join_error'); socket.off('new_message'); socket.off('messages_cleared')
       socket.disconnect()
     }
   }, [socket])
 
-  useEffect(() => {
-    if (!messagesRef.current) return
-    messagesRef.current.scrollTop = messagesRef.current.scrollHeight
-  }, [messages])
-
-  const handleJoin = (event) => {
-    event.preventDefault()
-    const trimmedPseudo = pseudoInput.trim()
-
-    if (!trimmedPseudo) {
-      setError('Entre un pseudo avant de rejoindre le chat.')
-      return
-    }
-
-    if (!connected) {
-      setError('Pas de connexion serveur. Lance le backend et reessaie.')
-      return
-    }
-
-    socket.emit('user_join', { pseudo: trimmedPseudo })
+  const handleJoin = (e) => {
+    e.preventDefault()
+    const t = pseudoInput.trim()
+    if (!t) { setError('Entre un pseudo.'); return }
+    if (!connected) { setError('Serveur indisponible.'); return }
+    localStorage.setItem(MODE_STORAGE_KEY, drawMode)
+    socket.emit('user_join_game', { pseudo: t })
   }
 
-  const handleSend = (event) => {
-    event.preventDefault()
+  const handleSend = async (e) => {
+    e.preventDefault()
+    const t = messageInput.trim()
+    if (!t || !pseudo) return
 
-    const content = messageInput.trim()
-    if (!content) return
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pseudo, content: t }),
+      })
 
-    socket.emit('chat_message', { content })
-    setMessageInput('')
-    setError('')
+      if (res.ok) {
+        setMessageInput('')
+      } else {
+        setError('Impossible d\'envoyer le message.')
+      }
+    } catch {
+      setError('Erreur réseau pendant l\'envoi du message.')
+    }
   }
 
   return (
-    <main className="chat-page">
-      <section className="chat-card">
-        <header className="chat-header">
-          <h1>Chat de la partie</h1>
-          <p>{connected ? 'Connecte au serveur' : 'Connexion en cours...'}</p>
-        </header>
+    <main className="app">
+      <header className="app-header">
+        <div className="logo">
+          <div className="logo-icon">🎨</div>
+          <div>
+            <div className="logo-text">GarticPhone</div>
+            <div className="logo-badge">✨ Pixel Edition</div>
+          </div>
+        </div>
+        <div className="status-pill">
+          <span className={`status-dot ${connected ? 'online' : ''}`} />
+          {connected ? 'Connecté' : 'Hors ligne'}
+        </div>
+      </header>
 
-        {!pseudo ? (
-          <form className="join-form" onSubmit={handleJoin}>
-            <label htmlFor="pseudo">Choisis ton pseudo</label>
-            <input
-              id="pseudo"
-              type="text"
-              maxLength={30}
-              value={pseudoInput}
-              onChange={(event) => setPseudoInput(event.target.value)}
-              placeholder="Ex: MonMeilleurPseudo"
-            />
-            <button type="submit">Rejoindre le chat</button>
-            {!connected ? <p className="hint">Le serveur de chat n'est pas connecte.</p> : null}
-          </form>
-        ) : (
-          <>
-            <p className="pseudo-line">
-              Connecte en tant que <strong>{pseudo}</strong>
-            </p>
+      {!pseudo ? (
+        <div className="join-screen">
+          <div className="join-card">
+            <span className="hero-emoji">🎨</span>
+            <h2>Rejoindre la partie</h2>
+            <p>Choisis ton pseudo et ton mode de dessin !</p>
 
-            <div className="messages" ref={messagesRef}>
-              {messages.length === 0 ? (
-                <p className="empty">Aucun message pour le moment.</p>
-              ) : (
-                messages.map((message) => (
-                  <article
-                    key={message.id}
-                    className={`message ${message.kind === 'system' ? 'system' : ''}`}
-                  >
-                    {message.kind === 'system' ? (
-                      <p>{message.content}</p>
-                    ) : (
-                      <>
-                        <p>
-                          <strong>{message.pseudo}</strong> {message.content}
-                        </p>
-                        <time dateTime={message.sentAt}>
-                          {new Date(message.sentAt).toLocaleTimeString()}
-                        </time>
-                      </>
-                    )}
-                  </article>
-                ))
-              )}
+            <form className="join-form" onSubmit={handleJoin}>
+              <label htmlFor="pseudo">Ton pseudo</label>
+              <input
+                id="pseudo"
+                type="text"
+                maxLength={30}
+                value={pseudoInput}
+                onChange={(e) => setPseudoInput(e.target.value)}
+                placeholder="Ex: PixelMaster99"
+                autoFocus
+              />
+
+              {/* Mode selector */}
+              <label style={{marginTop:'0.6rem'}}>Mode de dessin</label>
+              <div className="mode-selector">
+                <button
+                  type="button"
+                  className={`mode-btn ${drawMode === 'pixel' ? 'active' : ''}`}
+                  onClick={() => setDrawMode('pixel')}
+                >
+                  <span className="mode-icon">🟦</span>
+                  <span className="mode-label">Pixel Art</span>
+                  <span className="mode-desc">Grille de pixels, formes géométriques, style rétro</span>
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn ${drawMode === 'normal' ? 'active' : ''}`}
+                  onClick={() => setDrawMode('normal')}
+                >
+                  <span className="mode-icon">🖌️</span>
+                  <span className="mode-label">Dessin libre</span>
+                  <span className="mode-desc">Canvas fluide, trait lisse, style classique</span>
+                </button>
+              </div>
+
+              <button className="btn-primary" type="submit">
+                🎮 Rejoindre la partie
+              </button>
+              {!connected && <p style={{color:'var(--yellow)',fontSize:'0.85rem',marginTop:'0.3rem'}}>⚠️ Serveur non connecté</p>}
+            </form>
+            {error && <div className="error-banner">{error}</div>}
+          </div>
+        </div>
+      ) : (
+        <div className="game-layout">
+          <GamePhase pseudo={pseudo} ws={ws} drawMode={drawMode} />
+          <aside className="chat-panel">
+            <h3>💬 Chat</h3>
+            <div className="chat-messages">
+              {messages.map((msg, i) => (
+                <div key={i} className="chat-msg">
+                  <strong>{msg.pseudo}:</strong> {msg.content}
+                </div>
+              ))}
+              <div ref={el => { if(el) el.scrollIntoView({behavior:'smooth'}) }} />
             </div>
-
-            <form className="send-form" onSubmit={handleSend}>
+            <form className="chat-input-row" onSubmit={handleSend}>
               <input
                 type="text"
-                maxLength={400}
                 value={messageInput}
-                onChange={(event) => setMessageInput(event.target.value)}
-                placeholder="Ecris ton message..."
+                onChange={(e) => setMessageInput(e.target.value)}
+                placeholder="Message..."
+                maxLength={400}
               />
-              <button type="submit">Envoyer</button>
+              <button className="btn-send" type="submit">➤</button>
             </form>
-          </>
-        )}
+          </aside>
+        </div>
+      )}
 
-        {error ? <p className="error">{error}</p> : null}
-      </section>
+      {error && pseudo && <div className="error-banner" style={{marginTop:'1rem'}}>{error}</div>}
     </main>
   )
 }
