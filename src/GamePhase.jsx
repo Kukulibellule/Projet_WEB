@@ -742,7 +742,6 @@ function GamePhase({ pseudo, ws, drawMode }) {
   const DRAW_DEBUFFS = [
     { id: 'no-eraser', label: 'Gomme, annuler et effacer désactivés' },
     { id: 'bw-only', label: 'Couleurs limitées à noir et blanc' },
-    { id: 'no-preview', label: 'Tracé masqué en temps réel' },
     { id: 'no-shapes', label: 'Formes prédéfinies interdites' },
     { id: 'only-shapes', label: 'Seules les formes prédéfinies sont autorisées' },
   ];
