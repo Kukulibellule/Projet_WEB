@@ -102,7 +102,7 @@ function App() {
         <div className="logo">
           <div className="logo-icon">🎨</div>
           <div>
-            <div className="logo-text">GarticPhone</div>
+            <div className="logo-text">GraticPhone</div>
             <div className="logo-badge">✨ Pixel Edition</div>
           </div>
         </div>
